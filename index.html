@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Monitor de Página (SHA-256) – Front-end</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap 5 (CSS) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Ícones Bootstrap -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            background: #f3f4f6;
+        }
+        .main-card {
+            max-width: 1000px;
+            margin: 40px auto;
+        }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.85rem;
+        }
+        .status-ok {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-alert {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-loading {
+            background: #e0f2fe;
+            color: #075985;
+        }
+        .hash-box {
+            font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.8rem;
+            word-break: break-all;
+            background: #111827;
+            color: #e5e7eb;
+            padding: 10px 12px;
+            border-radius: 0.5rem;
+        }
+        .log-area {
+            max-height: 220px;
+            overflow-y: auto;
+            background: #ffffff;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+            padding: 10px 12px;
+            font-size: 0.85rem;
+        }
+        .log-line {
+            font-family: monospace;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card shadow main-card">
+        <div class="card-header d-flex justify-content-between align-items-center bg-dark text-white">
+            <div>
+                <h5 class="mb-0">Monitor de Alterações de Página (SHA-256)</h5>
+                <small id="subtitle-url"></small>
+            </div>
+            <span id="status-pill" class="status-pill status-loading">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span id="status-text">Iniciando monitoramento...</span>
+            </span>
+        </div>
+        <div class="card-body">
+
+            <!-- URL editável -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">URL monitorada</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="url-display"
+                           value="https://funcern.br/concursos/ifrn-integrado-2026/">
+                    <button class="btn btn-outline-primary" id="apply-url">
+                        <i class="bi bi-link-45deg"></i> Aplicar URL
+                    </button>
+                </div>
+                <div class="form-text">
+                    Edite a URL e clique em <strong>Aplicar URL</strong> para reiniciar o monitoramento.
+                    <br>
+                    <strong>Atenção:</strong> alguns sites não permitem que o navegador baixe o HTML por causa de CORS.
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="border rounded p-3 bg-light">
+                        <div class="fw-semibold">Intervalo de checagem</div>
+                        <div class="input-group mt-2">
+                            <input type="number" id="interval-input" class="form-control" min="5" value="60">
+                            <span class="input-group-text">segundos</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary mt-2" id="apply-interval">
+                            <i class="bi bi-clock-history"></i> Aplicar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="border rounded p-3 bg-light">
+                        <div class="fw-semibold">Última verificação</div>
+                        <p class="mb-1" id="last-check">—</p>
+                        <small class="text-muted" id="last-check-detail"></small>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="border rounded p-3 bg-light">
+                        <div class="fw-semibold">Última alteração detectada</div>
+                        <p class="mb-1" id="last-change">Nenhuma alteração detectada</p>
+                        <small class="text-muted" id="last-change-detail"></small>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- TRÊS HASHES: primeira, referência, atual -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <h6>Hash da primeira leitura</h6>
+                    <div id="initial-hash" class="hash-box">Aguardando primeira verificação...</div>
+                </div>
+                <div class="col-md-4">
+                    <h6>Hash de referência (última antes da mudança)</h6>
+                    <div id="reference-hash" class="hash-box">Aguardando primeira verificação...</div>
+                </div>
+                <div class="col-md-4">
+                    <h6>Hash atual</h6>
+                    <div id="current-hash" class="hash-box">Aguardando primeira verificação...</div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Log de verificações</h6>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary" id="force-check">
+                        <i class="bi bi-arrow-repeat"></i> Verificar agora
+                    </button>
+                    <button class="btn btn-outline-danger" id="clear-log">
+                        <i class="bi bi-trash"></i> Limpar log
+                    </button>
+                </div>
+            </div>
+
+            <div class="log-area" id="log-area"></div>
+
+            <div class="mt-3 text-muted" style="font-size: 0.8rem;">
+                <i class="bi bi-info-circle"></i>
+                A <strong>hash da primeira leitura</strong> é calculada na primeira verificação bem-sucedida
+                após aplicar a URL. A <strong>hash de referência</strong> é sempre a
+                <em>última leitura estável</em> (última antes da mudança). Nada é gravado em disco.
+                <br>
+                Se aparecer erro de acesso, provavelmente o site bloqueou o download do HTML (CORS).
+            </div>
+        </div>
+        <div class="card-footer text-end text-muted" style="font-size: 0.8rem;">
+            Monitor em HTML + CSS + JavaScript usando Web Crypto API (SHA-256).
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS (opcional, só para componentes) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    let initialHash = null;    // primeira leitura
+    let referenceHash = null;  // última leitura estável (antes da mudança)
+    let lastHash = null;       // última hash lida (para comparação sequencial)
+    let checkIntervalSeconds = 60;
+    let intervalId = null;
+    let alertTriggered = false;
+
+    const statusPill = document.getElementById('status-pill');
+    const statusText = document.getElementById('status-text');
+    const initialHashBox = document.getElementById('initial-hash');
+    const referenceHashBox = document.getElementById('reference-hash');
+    const currentHashBox = document.getElementById('current-hash');
+    const lastCheck = document.getElementById('last-check');
+    const lastCheckDetail = document.getElementById('last-check-detail');
+    const lastChange = document.getElementById('last-change');
+    const lastChangeDetail = document.getElementById('last-change-detail');
+    const logArea = document.getElementById('log-area');
+    const intervalInput = document.getElementById('interval-input');
+    const applyIntervalBtn = document.getElementById('apply-interval');
+    const forceCheckBtn = document.getElementById('force-check');
+    const clearLogBtn = document.getElementById('clear-log');
+    const urlInput = document.getElementById('url-display');
+    const applyUrlBtn = document.getElementById('apply-url');
+    const subtitleUrl = document.getElementById('subtitle-url');
+
+    function setSubtitleUrl(url) {
+        subtitleUrl.textContent = url;
+    }
+
+    function setStatus(mode, message) {
+        statusPill.classList.remove('status-ok', 'status-alert', 'status-loading');
+        if (mode === 'ok') {
+            statusPill.classList.add('status-ok');
+        } else if (mode === 'alert') {
+            statusPill.classList.add('status-alert');
+        } else {
+            statusPill.classList.add('status-loading');
+        }
+        statusText.textContent = message;
+    }
+
+    function addLogLine(text) {
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        div.textContent = text;
+        logArea.prepend(div);
+    }
+
+    function formatDateTime(dt) {
+        return dt.toLocaleString('pt-BR');
+    }
+
+    function getCurrentUrl() {
+        return urlInput.value.trim();
+    }
+
+    // Função para calcular SHA-256 com Web Crypto API
+    async function computeSHA256(text) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(text);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashHex;
+    }
+
+    async function checkPage() {
+        const url = getCurrentUrl();
+        if (!url) {
+            setStatus('alert', 'URL vazia');
+            return;
+        }
+
+        const now = new Date();
+
+        try {
+            setStatus('loading', 'Verificando página...');
+
+            const response = await fetch(url, {
+                cache: 'no-store',
+                mode: 'cors' // tentativa padrão; se o servidor não permitir, vai falhar
+            });
+
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status + " ao acessar a URL.");
+            }
+
+            const html = await response.text();
+            const hash = await computeSHA256(html);
+
+            lastCheck.textContent = formatDateTime(now);
+            lastCheckDetail.textContent = 'Verificação concluída com sucesso.';
+            setSubtitleUrl(url);
+
+            // Primeira leitura
+            if (!initialHash) {
+                initialHash = hash;
+                referenceHash = hash;
+                lastHash = hash;
+
+                initialHashBox.textContent = hash;
+                referenceHashBox.textContent = hash;
+                currentHashBox.textContent = hash;
+
+                setStatus('ok', 'Primeira leitura concluída. Monitorando...');
+                addLogLine(`[${formatDateTime(now)}] Primeira hash: ${hash}`);
+                return;
+            }
+
+            // Atualiza hash atual
+            currentHashBox.textContent = hash;
+
+            // Comparação com a última leitura (lastHash)
+            if (hash !== lastHash) {
+                // Houve mudança em relação à leitura anterior
+                // referenceHash deve ser a última leitura antes da mudança
+                referenceHash = lastHash;
+                referenceHashBox.textContent = referenceHash;
+
+                if (!alertTriggered) {
+                    alertTriggered = true;
+                    alert("⚠ A página monitorada sofreu alteração no HTML (hash diferente da leitura anterior)!");
+                }
+
+                setStatus('alert', 'ALTERAÇÃO DETECTADA!');
+                lastChange.textContent = formatDateTime(now);
+                lastChangeDetail.textContent = 'Hash atual diferente da última leitura estável.';
+                addLogLine(
+                    `[${formatDateTime(now)}] ALTERAÇÃO detectada. Ref: ${referenceHash} | Atual: ${hash}`
+                );
+            } else {
+                // Sem alteração em relação à leitura anterior
+                setStatus('ok', 'Nenhuma alteração detectada.');
+                addLogLine(`[${formatDateTime(now)}] Sem alteração. Hash atual igual à leitura anterior.`);
+                referenceHash = lastHash;
+                referenceHashBox.textContent = referenceHash;
+            }
+
+            // Atualiza lastHash para próxima comparação
+            lastHash = hash;
+
+        } catch (e) {
+            lastCheck.textContent = formatDateTime(now);
+            lastCheckDetail.textContent = 'Falha na verificação.';
+            setStatus('alert', 'Erro ao verificar');
+            addLogLine(
+                `[${formatDateTime(now)}] ERRO ao acessar ${url}: ${e.message} (possível bloqueio CORS ou de origem cruzada)`
+            );
+        }
+    }
+
+    function startInterval() {
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        intervalId = setInterval(checkPage, checkIntervalSeconds * 1000);
+    }
+
+    // Aplicar novo intervalo
+    applyIntervalBtn.addEventListener('click', () => {
+        const value = parseInt(intervalInput.value, 10);
+        if (isNaN(value) || value < 5) {
+            alert('Informe um intervalo de pelo menos 5 segundos.');
+            return;
+        }
+        checkIntervalSeconds = value;
+        startInterval();
+        addLogLine(`>>> Intervalo de checagem atualizado para ${checkIntervalSeconds} segundos.`);
+    });
+
+    // Verificar agora (manual)
+    forceCheckBtn.addEventListener('click', () => {
+        checkPage();
+    });
+
+    // Limpar log
+    clearLogBtn.addEventListener('click', () => {
+        logArea.innerHTML = '';
+    });
+
+    // Aplicar nova URL (reinicia monitoramento)
+    applyUrlBtn.addEventListener('click', () => {
+        const url = getCurrentUrl();
+        if (!url) {
+            alert('Informe uma URL válida.');
+            return;
+        }
+
+        // Reset de estado
+        initialHash = null;
+        referenceHash = null;
+        lastHash = null;
+        alertTriggered = false;
+
+        initialHashBox.textContent = 'Aguardando primeira verificação...';
+        referenceHashBox.textContent = 'Aguardando primeira verificação...';
+        currentHashBox.textContent = 'Aguardando primeira verificação...';
+        lastCheck.textContent = '—';
+        lastCheckDetail.textContent = '';
+        lastChange.textContent = 'Nenhuma alteração detectada';
+        lastChangeDetail.textContent = '';
+
+        setSubtitleUrl(url);
+        setStatus('loading', 'Reiniciando monitoramento para nova URL...');
+        addLogLine(`>>> URL alterada para: ${url}. Monitoramento reiniciado.`);
+
+        // Faz uma verificação imediata
+        checkPage();
+    });
+
+    // Inicialização
+    setSubtitleUrl(getCurrentUrl());
+    checkPage();
+    startInterval();
+</script>
+</body>
+</html>
